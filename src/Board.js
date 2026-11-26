@@ -21,6 +21,84 @@ export default class Board extends React.Component {
       complete: React.createRef(),
     }
   }
+
+  componentDidMount() {
+    const { backlog, inProgress, complete } = this.swimlanes;
+    this.drake = Dragula([
+      backlog.current,
+      inProgress.current,
+      complete.current,
+    ]);
+
+    this.drake.on('drop', (el, target, source, sibling) => {
+      this.drake.cancel(true);
+      this.handleCardDrop(el, target, sibling);
+    });
+  }
+
+  componentWillUnmount() {
+    if (this.drake) {
+      this.drake.destroy();
+    }
+  }
+
+  handleCardDrop(el, target, sibling) {
+    if (!target) return;
+
+    let targetLaneKey = 'backlog';
+    let targetStatus = 'backlog';
+
+    if (target === this.swimlanes.inProgress.current) {
+      targetLaneKey = 'inProgress';
+      targetStatus = 'in-progress';
+    } else if (target === this.swimlanes.complete.current) {
+      targetLaneKey = 'complete';
+      targetStatus = 'complete';
+    }
+
+    const cardId = el.dataset.id;
+    const siblingId = sibling ? sibling.dataset.id : null;
+
+    this.setState(prevState => {
+      const updatedClients = {
+        backlog: [...prevState.clients.backlog],
+        inProgress: [...prevState.clients.inProgress],
+        complete: [...prevState.clients.complete],
+      };
+
+      let movedCard = null;
+      for (const laneKey of Object.keys(updatedClients)) {
+        const idx = updatedClients[laneKey].findIndex(
+          card => String(card.id) === String(cardId)
+        );
+        if (idx !== -1) {
+          [movedCard] = updatedClients[laneKey].splice(idx, 1);
+          break;
+        }
+      }
+
+      if (!movedCard) return null;
+
+      const updatedCard = { ...movedCard, status: targetStatus };
+      const targetLane = updatedClients[targetLaneKey];
+
+      if (siblingId) {
+        const insertIdx = targetLane.findIndex(
+          card => String(card.id) === String(siblingId)
+        );
+        if (insertIdx !== -1) {
+          targetLane.splice(insertIdx, 0, updatedCard);
+        } else {
+          targetLane.push(updatedCard);
+        }
+      } else {
+        targetLane.push(updatedCard);
+      }
+
+      return { clients: updatedClients };
+    });
+  }
+
   getClients() {
     return [
       ['1','Stark, White and Abbott','Cloned Optimal Architecture', 'in-progress'],
@@ -47,7 +125,7 @@ export default class Board extends React.Component {
       id: companyDetails[0],
       name: companyDetails[1],
       description: companyDetails[2],
-      status: companyDetails[3],
+      status: 'backlog',
     }));
   }
   renderSwimlane(name, clients, ref) {
